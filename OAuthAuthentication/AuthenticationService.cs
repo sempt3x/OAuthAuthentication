@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -74,7 +76,6 @@ public class AuthenticationService : IAuthenticationService
             ["grant_type"] = "authorization_code",
             ["code"] = authorizationCode,
             ["redirect_uri"] = _options.RedirectUri.ToString(),
-            ["client_id"] = _options.ClientId,
             ["code_verifier"] = _codeVerifier
         }, cancellationToken).ConfigureAwait(false);
     }
@@ -90,8 +91,7 @@ public class AuthenticationService : IAuthenticationService
         var result = await RequestTokenAsync(endpoints.TokenEndpoint, new Dictionary<string, string>
         {
             ["grant_type"] = "refresh_token",
-            ["refresh_token"] = refreshToken,
-            ["client_id"] = _options.ClientId
+            ["refresh_token"] = refreshToken
         }, cancellationToken).ConfigureAwait(false);
 
         if (string.IsNullOrWhiteSpace(result.RefreshToken))
@@ -133,10 +133,11 @@ public class AuthenticationService : IAuthenticationService
         IReadOnlyDictionary<string, string> values,
         CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, tokenEndpoint)
-        {
-            Content = new FormUrlEncodedContent(values)
-        };
+        var formValues = new Dictionary<string, string>(values);
+        using var request = new HttpRequestMessage(HttpMethod.Post, tokenEndpoint);
+        AddClientAuthentication(request, formValues);
+        request.Content = new FormUrlEncodedContent(formValues);
+
         using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
@@ -145,6 +146,26 @@ public class AuthenticationService : IAuthenticationService
         if (result is null || string.IsNullOrWhiteSpace(result.AccessToken))
             throw new InvalidOperationException("The token response did not contain an access token.");
         return result;
+    }
+
+    private void AddClientAuthentication(HttpRequestMessage request, IDictionary<string, string> formValues)
+    {
+        switch (_options.TokenEndpointAuthenticationMethod)
+        {
+            case TokenEndpointAuthenticationMethod.ClientSecretPost:
+                formValues["client_id"] = _options.ClientId;
+                formValues["client_secret"] = _options.ClientSecret;
+                break;
+            case TokenEndpointAuthenticationMethod.ClientSecretBasic:
+                var userName = WebUtility.UrlEncode(_options.ClientId);
+                var password = WebUtility.UrlEncode(_options.ClientSecret);
+                var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{userName}:{password}"));
+                request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
+                break;
+            default:
+                throw new InvalidOperationException(
+                    $"Unsupported token endpoint authentication method: {_options.TokenEndpointAuthenticationMethod}.");
+        }
     }
 
     private async Task<ProviderEndpoints> GetEndpointsAsync(CancellationToken cancellationToken)
