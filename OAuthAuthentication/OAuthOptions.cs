@@ -1,6 +1,6 @@
 namespace OAuthAuthentication;
 
-/// <summary>Configuration needed to perform an OAuth 2.0 authorization-code flow with PKCE.</summary>
+/// <summary>Configuration needed to perform an OAuth 2.0 authorization-code flow.</summary>
 public sealed class OAuthOptions
 {
     /// <summary>The client ID supplied by the OAuth provider.</summary>
@@ -13,6 +13,9 @@ public sealed class OAuthOptions
 
     /// <summary>The space-separated scopes requested from the provider.</summary>
     public required string Scopes { get; init; }
+
+    /// <summary>Whether to protect the authorization-code flow with PKCE.</summary>
+    public bool UsePkce { get; init; } = true;
 
     /// <summary>The OpenID Connect discovery document URL.</summary>
     public Uri? DiscoveryEndpoint { get; init; }

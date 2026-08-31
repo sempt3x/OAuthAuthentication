@@ -1,10 +1,9 @@
 # OAuthAuthentication
 
-Reusable OAuth 2.0 authorization-code/PKCE logic with no UI or application-settings dependency.
+Reusable OAuth 2.0 authorization-code logic with optional PKCE and no UI or application-settings dependency.
 
 ```csharp
 using OAuthAuthentication;
-using OAuthAuthentication.Utilities;
 
 var options = new OAuthOptions
 {
@@ -14,11 +13,11 @@ var options = new OAuthOptions
     AuthorizationEndpoint = new Uri(configuredAuthorizationUrl),
     TokenEndpoint = new Uri(configuredTokenUrl),
     RedirectUri = new Uri(configuredRedirectUri),
-    Scopes = configuredScopes
+    Scopes = configuredScopes,
+    UsePkce = configuredUsePkce
 };
 
-var verifier = CodeVerifier.GenerateCodeVerifier();
-IAuthenticationService authentication = new AuthenticationService(options, verifier);
+IAuthenticationService authentication = new AuthenticationService(options);
 var authorizationUrl = await authentication.GetConnectionLinkAsync();
 ```
 
@@ -30,13 +29,16 @@ var refreshed = await authentication.GetTokenFromRefreshTokenAsync(tokens.Refres
 bool valid = AuthenticationService.IsTokenValid(refreshed.AccessToken);
 ```
 
-Keep the same service instance (and therefore the same PKCE verifier) between URL generation and
-the authorization-code exchange.
+`UsePkce` defaults to `true`. When enabled, the service generates a verifier, adds its S256 challenge
+to the authorization URL, and sends the verifier during the authorization-code exchange. Keep the
+same service instance between those two operations so it retains the generated verifier. Set
+`UsePkce = false` for the standard authorization-code flow without PKCE; no verifier is generated and
+no PKCE parameters are sent.
 
 `OAuthOptions` contains no provider-specific credentials, endpoints, or scopes. A host UI should
-collect the client ID, client secret, authorization URL, token URL, redirect URI, and space-separated
-scopes from the user. Provider presets may populate public endpoint URLs, but must not supply client
-credentials.
+collect the client ID, client secret, authorization URL, token URL, redirect URI, space-separated
+scopes, and PKCE preference from the user. Provider presets may populate public endpoint URLs, but
+must not supply client credentials or hardcode the PKCE setting.
 
 The client secret is sent only to the token endpoint. `ClientSecretPost` is the default authentication
 method. Providers requiring HTTP Basic authentication can be configured with:

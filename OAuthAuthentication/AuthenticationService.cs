@@ -7,35 +7,53 @@ using OAuthAuthentication.Models;
 
 namespace OAuthAuthentication;
 
-/// <summary>Performs OAuth 2.0 authorization-code/PKCE and refresh-token operations.</summary>
+/// <summary>Performs OAuth 2.0 authorization-code and refresh-token operations, optionally with PKCE.</summary>
 public class AuthenticationService : IAuthenticationService
 {
     private static readonly HttpClient SharedHttpClient = new();
     private readonly OAuthOptions _options;
-    private readonly string _codeVerifier;
+    private readonly string? _codeVerifier;
     private readonly HttpClient _httpClient;
     private ProviderEndpoints? _endpoints;
 
     public AuthenticationService(OAuthOptions options)
-        : this(options, Utilities.CodeVerifier.GenerateCodeVerifier(), null)
+        : this(options, null, null, generateCodeVerifier: true)
     {
     }
 
     public AuthenticationService(OAuthOptions options, string codeVerifier)
-        : this(options, codeVerifier, null)
+        : this(options, codeVerifier, null, generateCodeVerifier: false)
+    {
+    }
+
+    /// <summary>Creates a service without requiring a caller-supplied PKCE verifier.</summary>
+    public AuthenticationService(OAuthOptions options, HttpClient httpClient)
+        : this(options, null, httpClient, generateCodeVerifier: true)
     {
     }
 
     /// <summary>Creates a service. The supplied HTTP client remains owned by the caller.</summary>
     public AuthenticationService(OAuthOptions options, string codeVerifier, HttpClient? httpClient)
+        : this(options, codeVerifier, httpClient, generateCodeVerifier: false)
+    {
+    }
+
+    private AuthenticationService(
+        OAuthOptions options,
+        string? codeVerifier,
+        HttpClient? httpClient,
+        bool generateCodeVerifier)
     {
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
-        if (string.IsNullOrWhiteSpace(codeVerifier))
-            throw new ArgumentException("A PKCE code verifier is required.", nameof(codeVerifier));
+
+        if (options.UsePkce && !generateCodeVerifier && string.IsNullOrWhiteSpace(codeVerifier))
+            throw new ArgumentException("A PKCE code verifier is required when PKCE is enabled.", nameof(codeVerifier));
 
         _options = options;
-        _codeVerifier = codeVerifier;
+        _codeVerifier = options.UsePkce
+            ? codeVerifier ?? Utilities.CodeVerifier.GenerateCodeVerifier()
+            : null;
         _httpClient = httpClient ?? SharedHttpClient;
     }
 
@@ -47,10 +65,13 @@ public class AuthenticationService : IAuthenticationService
             ["client_id"] = _options.ClientId,
             ["response_type"] = "code",
             ["scope"] = _options.Scopes,
-            ["redirect_uri"] = _options.RedirectUri.ToString(),
-            ["code_challenge"] = GenerateCodeChallenge(_codeVerifier),
-            ["code_challenge_method"] = "S256"
+            ["redirect_uri"] = _options.RedirectUri.ToString()
         };
+        if (_options.UsePkce)
+        {
+            parameters["code_challenge"] = GenerateCodeChallenge(_codeVerifier!);
+            parameters["code_challenge_method"] = "S256";
+        }
 
         var query = string.Join("&", parameters.Select(pair =>
             $"{Uri.EscapeDataString(pair.Key)}={Uri.EscapeDataString(pair.Value)}"));
@@ -71,13 +92,16 @@ public class AuthenticationService : IAuthenticationService
             throw new ArgumentException("The authorization code is required.", nameof(authorizationCode));
 
         var endpoints = await GetEndpointsAsync(cancellationToken).ConfigureAwait(false);
-        return await RequestTokenAsync(endpoints.TokenEndpoint, new Dictionary<string, string>
+        var parameters = new Dictionary<string, string>
         {
             ["grant_type"] = "authorization_code",
             ["code"] = authorizationCode,
-            ["redirect_uri"] = _options.RedirectUri.ToString(),
-            ["code_verifier"] = _codeVerifier
-        }, cancellationToken).ConfigureAwait(false);
+            ["redirect_uri"] = _options.RedirectUri.ToString()
+        };
+        if (_options.UsePkce)
+            parameters["code_verifier"] = _codeVerifier!;
+
+        return await RequestTokenAsync(endpoints.TokenEndpoint, parameters, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<TokenResponse> GetTokenFromRefreshTokenAsync(
