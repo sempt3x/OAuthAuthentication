@@ -36,11 +36,18 @@ same service instance between those two operations so it retains the generated v
 no PKCE parameters are sent.
 
 `OAuthOptions` contains no provider-specific credentials, endpoints, or scopes. A host UI should
-collect the client ID, client secret, authorization URL, token URL, redirect URI, space-separated
+collect the client ID, optional client secret, authorization URL, token URL, redirect URI, space-separated
 scopes, and PKCE preference from the user. Provider presets may populate public endpoint URLs, but
 must not supply client credentials or hardcode the PKCE setting.
 
-The client secret is sent only to the token endpoint. `ClientSecretPost` is the default authentication
+`ClientSecret` may be omitted, `null`, empty, or whitespace. Host UIs and settings stores should allow
+it to be left empty. Without a secret, authorization-code and refresh-token requests send `client_id`
+and omit both `client_secret` and HTTP Basic authentication, regardless of the selected authentication
+method. PKCE works independently: `ClientSecret = ""` with `UsePkce = true` sends `code_verifier`
+during code exchange without sending a secret. Providers that require a secret return their normal
+token endpoint error, surfaced as an `HttpRequestException`.
+
+A configured client secret is sent only to the token endpoint. `ClientSecretPost` is the default authentication
 method. Providers requiring HTTP Basic authentication can be configured with:
 
 ```csharp
@@ -50,3 +57,7 @@ TokenEndpointAuthenticationMethod = TokenEndpointAuthenticationMethod.ClientSecr
 This library intentionally has no UI or application-settings dependency. Consumers own UI and
 persistence, and should keep client secrets and returned tokens in an operating-system credential
 vault or another encrypted secret store. Do not log or store them as plain text.
+
+Run `dotnet test OAuthAuthentication.sln` to execute the request-level regression tests on .NET 8
+and .NET 10. Tests use a simulated provider to check public and confidential clients, PKCE,
+refresh, discovery, and token endpoint errors without needing provider credentials.

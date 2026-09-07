@@ -174,15 +174,22 @@ public class AuthenticationService : IAuthenticationService
 
     private void AddClientAuthentication(HttpRequestMessage request, IDictionary<string, string> formValues)
     {
+        var clientSecret = _options.ClientSecret;
+        if (string.IsNullOrWhiteSpace(clientSecret))
+        {
+            formValues["client_id"] = _options.ClientId;
+            return;
+        }
+
         switch (_options.TokenEndpointAuthenticationMethod)
         {
             case TokenEndpointAuthenticationMethod.ClientSecretPost:
                 formValues["client_id"] = _options.ClientId;
-                formValues["client_secret"] = _options.ClientSecret;
+                formValues["client_secret"] = clientSecret;
                 break;
             case TokenEndpointAuthenticationMethod.ClientSecretBasic:
                 var userName = WebUtility.UrlEncode(_options.ClientId);
-                var password = WebUtility.UrlEncode(_options.ClientSecret);
+                var password = WebUtility.UrlEncode(clientSecret);
                 var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{userName}:{password}"));
                 request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
                 break;

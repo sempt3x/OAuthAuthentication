@@ -6,8 +6,8 @@ public sealed class OAuthOptions
     /// <summary>The client ID supplied by the OAuth provider.</summary>
     public required string ClientId { get; init; }
 
-    /// <summary>The client secret supplied by the OAuth provider.</summary>
-    public required string ClientSecret { get; init; }
+    /// <summary>The optional client secret. Null, empty, or whitespace means a public client.</summary>
+    public string? ClientSecret { get; init; }
 
     public required Uri RedirectUri { get; init; }
 
@@ -26,7 +26,7 @@ public sealed class OAuthOptions
     /// <summary>An explicit token endpoint. Overrides the value from discovery.</summary>
     public Uri? TokenEndpoint { get; init; }
 
-    /// <summary>How the client credentials are sent to the token endpoint.</summary>
+    /// <summary>How credentials are sent when a client secret is configured; otherwise only the client ID is sent.</summary>
     public TokenEndpointAuthenticationMethod TokenEndpointAuthenticationMethod { get; init; } =
         TokenEndpointAuthenticationMethod.ClientSecretPost;
 
@@ -34,8 +34,6 @@ public sealed class OAuthOptions
     {
         if (string.IsNullOrWhiteSpace(ClientId))
             throw new ArgumentException("A client ID is required.", nameof(ClientId));
-        if (string.IsNullOrWhiteSpace(ClientSecret))
-            throw new ArgumentException("A client secret is required.", nameof(ClientSecret));
         if (RedirectUri is null || !RedirectUri.IsAbsoluteUri)
             throw new ArgumentException("The redirect URI must be absolute.", nameof(RedirectUri));
         if (string.IsNullOrWhiteSpace(Scopes))
